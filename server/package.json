@@ -47,7 +47,7 @@
     "nodemailer": "^10.4.0",
     "pino": "^9.1.0",
     "pino-http": "^10.2.0",
-    "sanitize-html": "^2.12.1",
+    "sanitize-html": "^2.18.1",
     "sequelize": "^6.37.3",
     "slugify": "^1.6.6",
     "socket.io": "^4.8.4",
