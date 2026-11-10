@@ -1,13 +1,43 @@
 require('dotenv').config();
 const path = require('path');
+const fs = require('fs');
 
 const nodeEnv = process.env.NODE_ENV || 'development';
 const dbName = process.env.DB_NAME || 'p16_taskmanager';
 const dialect = process.env.DB_DIALECT || 'sqlite';
 
+function getStoragePath() {
+  if (process.env.DB_STORAGE) return process.env.DB_STORAGE;
+
+  const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME;
+  if (isServerless) {
+    const tmpDb = '/tmp/taskflow.sqlite';
+    // In Vercel serverless, /var/task is read-only. We must write to /tmp.
+    if (!fs.existsSync(tmpDb)) {
+      const candidates = [
+        path.resolve(__dirname, '../../dev.sqlite'),
+        path.resolve(__dirname, '../dev.sqlite'),
+        path.resolve(process.cwd(), 'server/dev.sqlite'),
+        path.resolve(process.cwd(), 'dev.sqlite'),
+      ];
+      for (const cand of candidates) {
+        if (fs.existsSync(cand)) {
+          try {
+            fs.copyFileSync(cand, tmpDb);
+            break;
+          } catch (_) {}
+        }
+      }
+    }
+    return tmpDb;
+  }
+
+  return path.resolve(__dirname, '../../dev.sqlite');
+}
+
 const base = dialect === 'sqlite' ? {
   dialect: 'sqlite',
-  storage: process.env.DB_STORAGE || path.resolve(__dirname, '../../dev.sqlite'),
+  storage: getStoragePath(),
   logging: process.env.DB_LOGGING === 'true' ? console.log : false,
   define: {
     underscored: true,
@@ -43,4 +73,3 @@ module.exports = {
   test: { ...base, database: `${dbName}_test`, logging: false },
   production: { ...base, database: dbName, logging: false },
 };
-

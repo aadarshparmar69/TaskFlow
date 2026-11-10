@@ -85,6 +85,42 @@ app.use(
 // Global rate limiter
 app.use(apiPrefix, globalLimiter);
 
+// Ensure database tables and demo seed data exist (essential for Vercel/serverless cold starts)
+let dbBootstrapPromise = null;
+app.use(async (req, res, next) => {
+  try {
+    if (!dbBootstrapPromise) {
+      dbBootstrapPromise = (async () => {
+        const { sequelize, User } = require('./models');
+        await sequelize.authenticate();
+        await sequelize.sync();
+        const count = await User.count().catch(() => 0);
+        if (count === 0) {
+          const queryInterface = sequelize.getQueryInterface();
+          const seeders = [
+            require('./seeders/20260101000001-demo-users'),
+            require('./seeders/20260101000002-demo-workspaces'),
+            require('./seeders/20260101000003-demo-boards'),
+            require('./seeders/20260101000004-demo-cards'),
+          ];
+          for (const s of seeders) {
+            try {
+              if (s && s.up) await s.up(queryInterface, sequelize.Sequelize);
+            } catch (seedErr) {
+              console.warn('Auto-seed notice:', seedErr.message);
+            }
+          }
+        }
+      })();
+    }
+    await dbBootstrapPromise;
+    next();
+  } catch (err) {
+    console.error('Database bootstrap error:', err.message);
+    next();
+  }
+});
+
 // API routes
 app.use(apiPrefix, routes);
 
