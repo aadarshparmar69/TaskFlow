@@ -1,7 +1,16 @@
 import axios from 'axios';
 
+const getBaseApiUrl = () => {
+  const customUrl = import.meta.env.VITE_API_URL;
+  // In production or when deployed on Vercel (same-origin), default to relative /api/v1
+  if (import.meta.env.PROD && (!customUrl || customUrl.includes('localhost'))) {
+    return '/api/v1';
+  }
+  return customUrl || '/api/v1';
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+  baseURL: getBaseApiUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

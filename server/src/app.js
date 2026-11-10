@@ -37,7 +37,13 @@ app.use(
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
-      if (corsOrigins.includes(origin)) return callback(null, true);
+      if (
+        corsOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app') ||
+        (process.env.VERCEL_URL && origin.includes(process.env.VERCEL_URL))
+      ) {
+        return callback(null, true);
+      }
       return callback(new Error(`CORS: origin ${origin} not allowed`));
     },
     credentials: true,
@@ -82,8 +88,20 @@ app.use(apiPrefix, globalLimiter);
 // API routes
 app.use(apiPrefix, routes);
 
-// GraphQL endpoint — mounted async during server startup via initGraphQL()
-// (see server.js for mounting logic)
+// GraphQL endpoint — lazily initialized on first request for serverless/Vercel compatibility
+let gqlMiddlewarePromise = null;
+app.use('/graphql', express.json(), async (req, res, next) => {
+  try {
+    if (!gqlMiddlewarePromise) {
+      const createGraphQLMiddleware = require('./graphql');
+      gqlMiddlewarePromise = createGraphQLMiddleware();
+    }
+    const gqlMiddleware = await gqlMiddlewarePromise;
+    return gqlMiddleware(req, res, next);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // 404 handler (must be before errorHandler)
 app.use(notFound);
@@ -93,14 +111,15 @@ app.use(errorHandler);
 
 /**
  * Mount the GraphQL middleware after Apollo Server has started.
- * Called from server.js after http server creation.
+ * Called from server.js after http server creation (or pre-warmed).
  */
 app.initGraphQL = async function () {
   try {
-    const createGraphQLMiddleware = require('./graphql');
-    const gqlMiddleware = await createGraphQLMiddleware();
-    // Mount before 404 handler — insert just before notFound
-    app.use('/graphql', express.json(), gqlMiddleware);
+    if (!gqlMiddlewarePromise) {
+      const createGraphQLMiddleware = require('./graphql');
+      gqlMiddlewarePromise = createGraphQLMiddleware();
+    }
+    await gqlMiddlewarePromise;
     logger.info('GraphQL endpoint ready at /graphql');
   } catch (err) {
     logger.error({ err }, 'Failed to initialize GraphQL');
